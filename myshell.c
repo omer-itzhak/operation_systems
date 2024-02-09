@@ -140,17 +140,18 @@ int execute_sync(char **arglist) {
 }
 
 
-// External function to create a child process
 pid_t create_child(void (*child_function)(char **, int), char **arglist, int index) {
     pid_t pid = fork();
-    if (pid == -1) { // Fork failed
+    if (pid == -1) {
         error_handling("Error - failed forking");
-    } else if (pid == 0) { // Child process
-        child_function(arglist, index); // Execute child-specific logic
-        exit(EXIT_SUCCESS); // Ensure child process exits after execution
+        exit(EXIT_FAILURE);
+    } else if (pid == 0) {
+        child_function(arglist, index);
+        exit(EXIT_SUCCESS);
     }
     return pid;
 }
+
 
 // External function to wait for a child process and handle errors
 int wait_and_handle_error(pid_t child_pid, const char *error_message) {
