@@ -18,8 +18,8 @@ void error_handling(const char *message);
 void execute_child(int arg_count, char **cmd_args);
 int wait_and_handle_error(pid_t child_pid, const char *error_message);
 pid_t create_child(void (*child_function)(void));
-void first_child_function(void);
-void second_child_function(void);
+void first_child_function(char **arglist, int index);
+void second_child_function(char **arglist, int index);
 
 
 
