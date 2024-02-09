@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <string.h>
 
 int execute_sync(char **arglist);
 
@@ -192,6 +193,10 @@ int establish_pipe(int index, char **arg_list) {
         // Execute the first command
         if (execvp(arg_list[0], arg_list) == -1) {
             handle_error("Error - failed to execute the first command");
+        }
+        
+        if (waitpid(second_child_pid, NULL, 0) == -1) {
+        handle_error("Error - waitpid failed for the second child process");
         }
     }
 
