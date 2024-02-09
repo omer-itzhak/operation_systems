@@ -93,36 +93,48 @@ int finalize(void) {
 }
 
 
-int execute_sync(char **arglist) {
-    // execute the command and wait until it completes before accepting another command
-    pid_t pid = fork();
-    if (pid == -1) { // fork failed
-        perror("Error - failed forking");
-        return 0; // error in the original process, so process_arglist should return 0
-    } else if (pid == 0) { // Child process
+// Execute the provided command in synchronous mode, waiting for its completion.
+// Return 1 on successful execution, 0 on failure.
+int execute_sync(char **command_args) {
+    // Fork a new process to execute the command
+    pid_t child_pid = fork();
+
+    if (child_pid == 0) { // Child process
+        // Set up signal handling for foreground child processes to handle Ctrl+C
         if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-            // Foreground child processes should terminate upon SIGINT
-            perror("Error - failed to change signal SIGINT handling");
+            perror("Error - unable to handle Ctrl+C in the child process");
             exit(1);
         }
-        if (signal(SIGCHLD, SIG_DFL) ==
-            SIG_ERR) { // restore to default SIGCHLD handling in case that execvp don't change signals
-            perror("Error - failed to change signal SIGCHLD handling");
+
+        // Reset the handling of child termination signals to default
+        if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+            perror("Error - unable to reset child termination signal handling in the child process");
             exit(1);
         }
-        if (execvp(arglist[0], arglist) == -1) { // executing command failed
-            perror("Error - failed executing the command");
+
+        // Execute the specified command in the child process
+        if (execvp(command_args[0], command_args) == -1) {
+            // Execution of the command failed
+            perror("Error - failed to execute the specified command");
             exit(1);
         }
+    } else if (child_pid == -1) { // Failed to create a new process
+        perror("Error - unable to create a new child process");
+        return 0; // Indicate an error in the original process, prompting process_arglist to return 0
     }
+
     // Parent process
-    if (waitpid(pid, NULL, 0) == -1 && errno != ECHILD && errno != EINTR) {
-        // ECHILD and EINTR in the parent shell after waitpid are not considered as errors
-        perror("Error - waitpid failed");
-        return 0; // error in the original process, so process_arglist should return 0
+    int child_status;
+    // Wait for the child process to complete its execution
+    if (waitpid(child_pid, &child_status, 0) == -1 && errno != ECHILD && errno != EINTR) {
+        // ECHILD and EINTR are not treated as errors in the parent shell after the waitpid operation.
+        perror("Error - failed to wait for the child process");
+        return 0; // Indicate an error in the original process, prompting process_arglist to return 0
     }
-    return 1; // no error occurs in the parent so for the shell to handle another command, process_arglist should return 1
+
+    return 1; // Successful execution in the parent process, allowing the shell to handle another command
 }
+
 
 int execute_async(int count, char **arglist) {
     // execute the command but do not wait until it completes before accepting another command
