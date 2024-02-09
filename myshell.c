@@ -12,6 +12,7 @@ int execute_async(int count, char **arglist);
 int establish_pipe(int index, char **arglist);
 int setup_output_redirection(int count, char **arglist);
 void error_handling(const char *message);
+void execute_child(int arg_count, char **cmd_args);
 
 
 int prepare(void) {
@@ -129,27 +130,37 @@ int execute_sync(char **arglist) {
 }
 
 
-int execute_async(int count, char **arglist) {
-    // execute the command but do not wait until it completes before accepting another command
-    pid_t pid = fork();
-    if (pid == -1) { // fork failed
-        perror("Error - failed forking");
-        return 0; // error in the original process, so process_arglist should return 0
-    } else if (pid == 0) { // Child process
-        arglist[count - 1] = NULL; // We shouldn't pass the & argument to execvp
-        if (signal(SIGCHLD, SIG_DFL) ==
-            SIG_ERR) { // restore to default SIGCHLD handling in case that execvp don't change signals
-            perror("Error - failed to change signal SIGCHLD handling");
-            exit(1);
-        }
-        if (execvp(arglist[0], arglist) == -1) { // executing command failed
-            perror("Error - failed executing the command");
-            exit(1);
-        }
+void execute_child(int arg_count, char **cmd_args) {
+    // Exclude the '&' argument to prevent it from being passed to execvp
+    cmd_args[arg_count - 1] = NULL;
+
+    // Restore default SIGCHLD handling in case execvp doesn't modify signals
+    if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+        error_handling("Error: Unable to reset the SIGCHLD signal handling");
+    }
+
+    // Execute the command in the child process
+    if (execvp(cmd_args[0], cmd_args) == -1) {
+        error_handling("Error: Command execution failed");
+    }
+}
+
+int execute_async(int arg_count, char **cmd_args) {
+    // Spawn a child process to execute the command without waiting for completion before accepting another command
+    pid_t child_pid = fork();
+    if (child_pid == -1) { // Forking failed
+        error_handling("Error: Unable to create a new process");
+        return 0; // Error in the original process, causing process_arglist to return 0
+    } else if (child_pid == 0) { // Child process
+        execute_child(arg_count, cmd_args);
+        // The execute_child function contains the command execution logic and handles errors
+        // If it returns, it means an error occurred, and the child process exits
+        exit(EXIT_FAILURE); // Ensure the child process exits even if execute_child returns unexpectedly
     }
     // Parent process
-    return 1; // for the shell to handle another command, process_arglist should return 1
+    return 1; // No errors occurred in the parent, allowing the shell to handle another command
 }
+
 
 int establish_pipe(int index, char **arglist) {
     // execute the commands that seperated by piping
