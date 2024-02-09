@@ -9,7 +9,7 @@
 
 int execute_sync(char **arglist);
 
-int execute_async(int count, char **arglist);
+int execute_async(int num_args, char **arglist);
 
 int establish_pipe(int index, char **arglist);
 
@@ -137,27 +137,38 @@ int execute_sync(char **command_args) {
 
 
 
-int execute_async(int count, char **arglist) {
-    // execute the command but do not wait until it completes before accepting another command
-    pid_t pid = fork();
-    if (pid == -1) { // fork failed
-        perror("Error - failed forking");
-        return 0; // error in the original process, so process_arglist should return 0
-    } else if (pid == 0) { // Child process
-        arglist[count - 1] = NULL; // We shouldn't pass the & argument to execvp
-        if (signal(SIGCHLD, SIG_DFL) ==
-            SIG_ERR) { // restore to default SIGCHLD handling in case that execvp don't change signals
-            perror("Error - failed to change signal SIGCHLD handling");
+// Execute the specified command asynchronously, allowing the shell to handle subsequent commands without waiting.
+// Returns 1 on successful execution, 0 on failure.
+int execute_async(int num_args, char **arg_list) {
+    // Create a new process using fork
+    pid_t child_process_id = fork();
+
+    if (child_process_id == -1) { // Forking failed
+        perror("Error - unable to initiate a new process");
+        return 0; // Error in the original process, process_arglist should return 0
+    }
+
+    if (child_process_id == 0) { // Child process
+        // Exclude the '&' argument to prevent it from being passed to execvp
+        arg_list[num_args - 1] = NULL;
+
+        // Revert to default handling for child termination signals
+        if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+            perror("Error - failed to reset signal handling for child termination");
             exit(1);
         }
-        if (execvp(arglist[0], arglist) == -1) { // executing command failed
-            perror("Error - failed executing the command");
+
+        // Execute the specified command in the child process
+        if (execvp(arg_list[0], arg_list) == -1) {
+            perror("Error - failed to execute the command");
             exit(1);
         }
     }
+
     // Parent process
-    return 1; // for the shell to handle another command, process_arglist should return 1
+    return 1; // Successful execution in the parent process, allowing the shell to handle another command
 }
+
 
 int establish_pipe(int index, char **arglist) {
     // execute the commands that seperated by piping
