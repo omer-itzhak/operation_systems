@@ -139,6 +139,23 @@ int execute_sync(char **arglist) {
     return 1; // No errors occurred in the parent, allowing the shell to handle another command
 }
 
+void execute_child(int arg_count, char **cmd_args) {
+    // Exclude the '&' argument to prevent it from being passed to execvp
+    cmd_args[arg_count - 1] = NULL;
+
+    // Restore default SIGCHLD handling in case execvp doesn't modify signals
+    if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+        error_handling("Error: Unable to reset the SIGCHLD signal handling");
+    }
+
+    // Execute the command in the child process
+    if (execvp(cmd_args[0], cmd_args) == -1) {
+        error_handling("Error: Command execution failed");
+    }
+}
+
+int execute_async(int arg_count, char **cmd_args) {
+
 
 pid_t create_child(void (*child_function)(char **, int), char **arglist, int index) {
     pid_t pid = fork();
