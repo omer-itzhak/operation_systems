@@ -17,7 +17,7 @@ int setup_output_redirection(int count, char **arglist);
 void error_handling(const char *message);
 void execute_child(int arg_count, char **cmd_args);
 int wait_and_handle_error(pid_t child_pid, const char *error_message);
-pid_t create_child(void (*child_function)(void));
+pid_t create_child(void (*child_function)(char **, int), char **arglist, int index);
 void first_child_function(char **arglist, int index);
 void second_child_function(char **arglist, int index);
 
@@ -141,12 +141,13 @@ int execute_sync(char **arglist) {
 
 
 // External function to create a child process
-pid_t create_child(void (*child_function)(void)) {
+pid_t create_child(void (*child_function)(char **, int), char **arglist, int index) {
     pid_t pid = fork();
     if (pid == -1) { // Fork failed
         error_handling("Error - failed forking");
     } else if (pid == 0) { // Child process
-        child_function(); // Execute child-specific logic
+        child_function(arglist, index); // Execute child-specific logic
+        exit(EXIT_SUCCESS); // Ensure child process exits after execution
     }
     return pid;
 }
