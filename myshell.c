@@ -194,10 +194,6 @@ int establish_pipe(int index, char **arg_list) {
         if (execvp(arg_list[0], arg_list) == -1) {
             handle_error("Error - failed to execute the first command");
         }
-        
-        if (waitpid(second_child_pid, NULL, 0) == -1) {
-        handle_error("Error - waitpid failed for the second child process");
-        }
     }
 
     // Fork the second child process
@@ -218,6 +214,22 @@ int establish_pipe(int index, char **arg_list) {
             handle_error("Error - failed to execute the second command");
         }
     }
+
+    // Parent process
+    close(pipe_fd[0]); // Close both ends of the pipe in the parent
+    close(pipe_fd[1]);
+
+    // Wait for both child processes to complete
+    if (waitpid(first_child_pid, NULL, 0) == -1) {
+        handle_error("Error - waitpid failed for the first child process");
+    }
+
+    if (waitpid(second_child_pid, NULL, 0) == -1) {
+        handle_error("Error - waitpid failed for the second child process");
+    }
+
+    return 1; // Successful execution of the pipe in the parent
+}
 
 int setup_output_redirection(int count, char **arglist) {
     // execute the command so that the standard output is redirected to the output file
@@ -261,10 +273,3 @@ int setup_output_redirection(int count, char **arglist) {
     }
     return 1; // no error occurs in the parent so for the shell to handle another command, process_arglist should return 1
 }
-
-    // Parent process
-    close(pipe_fd[0]); // Close both ends of the pipe in the parent
-    close(pipe_fd[1]);
-
-    // Wait for both child processes to complete
-    if (waitpid(first_child_pid, NULL
