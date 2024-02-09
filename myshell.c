@@ -8,12 +8,11 @@
 #include <string.h>
 
 int execute_sync(char **arglist);
-
 int execute_async(int count, char **arglist);
-
 int establish_pipe(int index, char **arglist);
-
 int setup_output_redirection(int count, char **arglist);
+void error_handling(const char *message);
+
 
 int prepare(void) {
     struct sigaction sa_ignore;
@@ -92,37 +91,43 @@ int finalize(void) {
     return 0;
 }
 
+// External error handling function
+void error_handling(const char *message) {
+    perror(message);
+    exit(EXIT_FAILURE);
+}
 
 int execute_sync(char **arglist) {
-    // execute the command and wait until it completes before accepting another command
-    pid_t pid = fork();
-    if (pid == -1) { // fork failed
-        perror("Error - failed forking");
-        return 0; // error in the original process, so process_arglist should return 0
-    } else if (pid == 0) { // Child process
+    // Spawn a child process to execute the command, then wait for its completion before accepting another command
+    pid_t child_pid = fork();
+    if (child_pid == -1) { // Forking failed
+        error_handling("Failed to create a child process");
+        return 0; // An error occurred in the original process, causing process_arglist to return 0
+    } else if (child_pid == 0) { // Child process
+        // Set up signal handling for the child process
         if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-            // Foreground child processes should terminate upon SIGINT
-            perror("Error - failed to change signal SIGINT handling");
-            exit(1);
+            // Handle SIGINT in foreground child processes
+            error_handling("Failed to adjust SIGINT handling in the child process");
         }
-        if (signal(SIGCHLD, SIG_DFL) ==
-            SIG_ERR) { // restore to default SIGCHLD handling in case that execvp don't change signals
-            perror("Error - failed to change signal SIGCHLD handling");
-            exit(1);
+        if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+            // Restore default SIGCHLD handling in case execvp doesn't modify signals
+            error_handling("Failed to adjust SIGCHLD handling in the child process");
         }
-        if (execvp(arglist[0], arglist) == -1) { // executing command failed
-            perror("Error - failed executing the command");
-            exit(1);
+        // Execute the command in the child process
+        if (execvp(arglist[0], arglist) == -1) {
+            error_handling("Failed to execute the command in the child process");
         }
     }
     // Parent process
-    if (waitpid(pid, NULL, 0) == -1 && errno != ECHILD && errno != EINTR) {
-        // ECHILD and EINTR in the parent shell after waitpid are not considered as errors
-        perror("Error - waitpid failed");
-        return 0; // error in the original process, so process_arglist should return 0
+    // Wait for the child process to complete
+    if (waitpid(child_pid, NULL, 0) == -1 && errno != ECHILD && errno != EINTR) {
+        // ECHILD and EINTR in the parent shell after waitpid are not considered errors
+        error_handling("Failed to wait for the child process");
+        return 0; // An error occurred in the original process, causing process_arglist to return 0
     }
-    return 1; // no error occurs in the parent so for the shell to handle another command, process_arglist should return 1
+    return 1; // No errors occurred in the parent, allowing the shell to handle another command
 }
+
 
 int execute_async(int count, char **arglist) {
     // execute the command but do not wait until it completes before accepting another command
