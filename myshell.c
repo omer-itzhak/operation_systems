@@ -170,6 +170,27 @@ int execute_async(int arg_count, char **cmd_args) {
     return 1; // No errors occurred in the parent, allowing the shell to handle another command
 }
 
+// External function to redirect stdout
+void redirect_stdout(int fd) {
+    if (dup2(fd, STDOUT_FILENO) == -1) {
+        perror("Error - failed to redirect stdout");
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd);
+}
+
+// External function to wait for a child process and handle errors
+int wait_and_handle_error(pid_t child_pid, const char *error_message) {
+    int status;
+    if (waitpid(child_pid, &status, 0) == -1 && errno != ECHILD && errno != EINTR) {
+        // ECHILD and EINTR in the parent shell after waitpid are not considered as errors
+        perror(error_message);
+        return 0; // Error occurred
+    }
+
+    return 1; // No error
+}
 
 // External function to set signal handling
 void signal_handling() {
