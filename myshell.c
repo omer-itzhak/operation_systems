@@ -155,6 +155,20 @@ void execute_child(int arg_count, char **cmd_args) {
 }
 
 int execute_async(int arg_count, char **cmd_args) {
+    // Spawn a child process to execute the command without waiting for completion before accepting another command
+    pid_t child_pid = fork();
+    if (child_pid == -1) { // Forking failed
+        error_handling("Error: Unable to create a new process");
+        return 0; // Error in the original process, causing process_arglist to return 0
+    } else if (child_pid == 0) { // Child process
+        execute_child(arg_count, cmd_args);
+        // The execute_child function contains the command execution logic and handles errors
+        // If it returns, it means an error occurred, and the child process exits
+        exit(EXIT_FAILURE); // Ensure the child process exits even if execute_child returns unexpectedly
+    }
+    // Parent process
+    return 1; // No errors occurred in the parent, allowing the shell to handle another command
+}
 
 
 pid_t create_child(void (*child_function)(char **, int), char **arglist, int index) {
