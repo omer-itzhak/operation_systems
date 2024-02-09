@@ -164,7 +164,7 @@ int wait_and_handle_error(pid_t child_pid, const char *error_message) {
 }
 
 // External function to establish a pipe between two commands
-int establish_pipe(char **arglist, int index) {
+int establish_pipe(int index, char **arglist) {
     // Execute the commands separated by piping
     arglist[index] = NULL;
 
@@ -174,10 +174,10 @@ int establish_pipe(char **arglist, int index) {
     }
 
     // Creating the first child
-    pid_t pid_first = create_child(first_child_function, arglist, index);
+    pid_t pid_first = create_child(first_child_function, index, arglist);
 
     // Creating the second child
-    pid_t pid_second = create_child(second_child_function, arglist, index + 1);
+    pid_t pid_second = create_child(second_child_function, index + 1, arglist);
 
     // Parent process
     // Closing two ends of the pipe
@@ -196,6 +196,7 @@ int establish_pipe(char **arglist, int index) {
 
     return 1; // No error occurs in the parent, so for the shell to handle another command, process_arglist should return 1
 }
+
 
 // External function for the first child process logic
 void first_child_function(char **arglist, int index) {
