@@ -19,6 +19,8 @@ void execute_command(const char *command, int fd_input, int fd_output);
 pid_t create_child();
 void signal_handling();
 void redirect_stdin(int fd);
+void redirect_stdout(int fd);
+int wait_and_handle_error(pid_t child_pid, const char *error_message);
 
 
 
