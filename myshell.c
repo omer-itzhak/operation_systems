@@ -258,45 +258,56 @@ int establish_pipe(int index, char **arglist) {
     return 1; // No error occurs in the parent, so for the shell to handle another command, process_arglist should return 1
 }
 
+// Function to set up output redirection
 int setup_output_redirection(int count, char **arglist) {
-    // execute the command so that the standard output is redirected to the output file
+    // Check if the command includes a single redirection symbol (">").
+    // If found, open the specified file that comes after the symbol
+    // and execute the child process, redirecting its standard output (stdout) to the file.
+
+    // Modify arglist to truncate it at the redirection symbol.
     arglist[count - 2] = NULL;
+
+    // Fork to create a child process
     pid_t pid = fork();
-    if (pid == -1) { // fork failed
-        perror("Error - failed forking");
-        return 0; // error in the original process, so process_arglist should return 0
+    if (pid == -1) { // Fork failed
+        error_handling("Error - failed forking");
+        return 0; // Return 0 to indicate an error in the original process
     } else if (pid == 0) { // Child process
+        // Set signal handling for the child process
         if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-            // Foreground child processes should terminate upon SIGINT
-            perror("Error - failed to change signal SIGINT handling");
-            exit(1);
+            error_handling("Error - failed to change signal SIGINT handling");
         }
-        if (signal(SIGCHLD, SIG_DFL) ==
-            SIG_ERR) { // restore to default SIGCHLD handling in case that execvp don't change signals
-            perror("Error - failed to change signal SIGCHLD handling");
-            exit(1);
+        if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+            error_handling("Error - failed to change signal SIGCHLD handling");
         }
-        int fd = open(arglist[count - 1], O_WRONLY | O_CREAT | O_TRUNC,
-                      0777); // create or overwrite a file for redirecting the output of the command and set the permissions in creating
+
+        // Open the specified file for writing or create it if it doesn't exist.
+        // Set file permissions in the process.
+        int fd = open(arglist[count - 1], O_WRONLY | O_CREAT | O_TRUNC, 0777);
         if (fd == -1) {
-            perror("Error - Failed opening the file");
-            exit(1);
+            error_handling("Error - Failed opening the file");
         }
+
+        // Redirect stdout of the child process to the opened file using dup2.
         if (dup2(fd, 1) == -1) {
-            perror("Error - failed to refer the stdout to the file");
-            exit(1);
+            error_handling("Error - failed to refer stdout to the file");
         }
+
+        // Close the file descriptor.
         close(fd);
-        if (execvp(arglist[0], arglist) == -1) { // executing command failed
-            perror("Error - failed executing the command");
-            exit(1);
+
+        // Execute the command in the child process.
+        if (execvp(arglist[0], arglist) == -1) {
+            error_handling("Error - failed executing the command");
         }
     }
-    // Parent process
-    if (waitpid(pid, NULL, 0) == -1 && errno != ECHILD && errno != EINTR) {
-        // ECHILD and EINTR in the parent shell after waitpid are not considered as errors
-        perror("Error - waitpid failed");
-        return 0; // error in the original process, so process_arglist should return 0
+
+    // Parent process: Wait for the child process to finish
+    if (!wait_and_handle_error(pid, "Error - waitpid failed")) {
+        return 0; // Return 0 to indicate an error in the original process
     }
-    return 1; // no error occurs in the parent so for the shell to handle another command, process_arglist should return 1
+
+    // Return 1 to indicate successful execution in the parent process
+    return 1;
 }
+
