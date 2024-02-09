@@ -14,7 +14,7 @@ int execute_async(int count, char **arglist);
 int establish_pipe(int index, char **arglist);
 int setup_output_redirection(int count, char **arglist);
 void error_handling(const char *message);
-void execute_child(arg_count, cmd_args);
+void execute_child(int arg_count, char **cmd_args);
 void execute_command(const char *command, int fd_input, int fd_output);
 pid_t create_child();
 void signal_handling();
