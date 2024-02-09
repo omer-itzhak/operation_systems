@@ -44,50 +44,47 @@ int prepare(void) {
 
 
 int process_arglist(int num_args, char **cmd_args) {
-    // Operation result initialized to a default value of failure
-    int operation_result = 0;
-    
-    // Using a bool flag to determine background execution
-    int background_flag = (*cmd_args[num_args - 1] == '&') ?  1 : 0;
-    
-    // For clarity, define an enum for different operation types
-    typedef enum { BACKGROUND, REDIRECT, PIPE, REGULAR } OperationType;
-    OperationType operation_type = REGULAR; // Default operation type
-    
-    // Find out what kind of operation we're performing
+    int background_flag = 0;
+
+    // Check if the last argument is '&', indicating background execution
+    if (num_args > 0 && strcmp(cmd_args[num_args - 1], "&") == 0) {
+        background_flag = 1;
+        cmd_args[num_args - 1] = NULL; // Remove '&' from the argument list
+        num_args--; // Decrement the argument count
+    }
+
+    // Check for piping and redirection
+    int pipe_index = -1;
+    int redirect_index = -1;
+
     for (int i = 0; i < num_args; i++) {
-        if (background_flag && i == num_args - 1) {
-            operation_type = BACKGROUND;
+        if (strcmp(cmd_args[i], "|") == 0) {
+            pipe_index = i;
             break;
-        }
-        if (*cmd_args[i] == '>') {
-            operation_type = REDIRECT;
-            break;
-        }
-        if (*cmd_args[i] == '|') {
-            operation_type = PIPE;
+        } else if (strcmp(cmd_args[i], ">") == 0) {
+            redirect_index = i;
             break;
         }
     }
 
-    // Execute operation based on the determined operation type
-    switch (operation_type) {
-        case BACKGROUND:
-            operation_result = execute_async(num_args, cmd_args);
-            break;
-        case REDIRECT:
-            operation_result = setup_output_redirection(num_args, cmd_args);
-            break;
-        case PIPE:
-            operation_result = establish_pipe(num_args, cmd_args);
-            break;
-        case REGULAR:
-            operation_result = execute_sync(cmd_args);
-            break;
+    // Execute based on the presence of pipes or redirection
+    if (pipe_index != -1) {
+        // Handle pipe
+        return establish_pipe(pipe_index, cmd_args);
+    } else if (redirect_index != -1) {
+        // Handle output redirection
+        return setup_output_redirection(redirect_index, cmd_args);
+    } else {
+        // No piping or redirection, execute normally
+        if (background_flag) {
+            // Execute asynchronously
+            return execute_async(num_args, cmd_args);
+        } else {
+            // Execute synchronously
+            return execute_sync(num_args, cmd_args);
+        }
     }
-
-    return operation_result;
-} 
+}
 
 
 int finalize(void) {
