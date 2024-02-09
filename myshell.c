@@ -167,6 +167,7 @@ int execute_async(int arg_count, char **cmd_args) {
 
 
 // External function to execute a command and handle errors
+// External function to execute a command and handle errors
 void execute_command(const char *command, int fd_input, int fd_output) {
     if (dup2(fd_input, STDIN_FILENO) == -1) {
         error_handling("Error - Failed to redirect input");
@@ -179,12 +180,16 @@ void execute_command(const char *command, int fd_input, int fd_output) {
     close(fd_input);
     close(fd_output);
 
-    char *args[] = {command, NULL};  // Argument array for execvp
+    char command_copy[strlen(command) + 1];  // Temporary non-const variable
+    strcpy(command_copy, command);
 
-    if (execvp(command, args) == -1) {
+    char *args[] = {command_copy, NULL};  // Argument array for execvp
+
+    if (execvp(command_copy, args) == -1) {
         error_handling("Error - Failed to execute the command");
     }
 }
+
 
 
 // External function to establish a pipe and execute child command
