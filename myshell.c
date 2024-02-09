@@ -6,14 +6,20 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <signal.h>
+
 
 int execute_sync(char **arglist);
 int execute_async(int count, char **arglist);
 int establish_pipe(int index, char **arglist);
 int setup_output_redirection(int count, char **arglist);
 void error_handling(const char *message);
+void execute_child(arg_count, cmd_args);
 void execute_command(const char *command, int fd_input, int fd_output);
 pid_t create_child();
+void signal_handling();
+void redirect_stdin(int fd);
+
 
 
 
@@ -165,6 +171,28 @@ int execute_async(int arg_count, char **cmd_args) {
 }
 
 
+// External function to set signal handling
+void signal_handling() {
+    if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
+        perror("Error - failed to change signal SIGINT handling");
+        exit(EXIT_FAILURE);
+    }
+
+    if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+        perror("Error - failed to change signal SIGCHLD handling");
+        exit(EXIT_FAILURE);
+    }
+}
+
+// External function to redirect stdin
+void redirect_stdin(int fd) {
+    if (dup2(fd, STDIN_FILENO) == -1) {
+        perror("Error - failed to redirect stdin");
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd);
+}
 
 // External function to execute a command and handle errors
 void execute_command(const char *command, int fd_input, int fd_output) {
