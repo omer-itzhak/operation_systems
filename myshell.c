@@ -12,9 +12,9 @@ int execute_async(int count, char **arglist);
 int establish_pipe(int index, char **arglist);
 int setup_output_redirection(int count, char **arglist);
 void error_handling(const char *message);
-void execute_child(int arg_count, char **cmd_args);
 void execute_command(const char *command, int fd_input, int fd_output);
-int establish_pipe_child(const char *command, int fd_input, int fd_output);
+pid_t create_child();
+
 
 
 
@@ -167,64 +167,65 @@ int execute_async(int arg_count, char **cmd_args) {
 
 
 // External function to execute a command and handle errors
-// External function to execute a command and handle errors
 void execute_command(const char *command, int fd_input, int fd_output) {
-    if (dup2(fd_input, STDIN_FILENO) == -1) {
-        error_handling("Error - Failed to redirect input");
-    }
-
-    if (dup2(fd_output, STDOUT_FILENO) == -1) {
-        error_handling("Error - Failed to redirect output");
+    if (dup2(fd_input, STDIN_FILENO) == -1 || dup2(fd_output, STDOUT_FILENO) == -1) {
+        error_handling("Error - Failed to redirect input/output");
     }
 
     close(fd_input);
     close(fd_output);
 
-    char command_copy[strlen(command) + 1];  // Temporary non-const variable
+    char command_copy[strlen(command) + 1];
     strcpy(command_copy, command);
 
-    char *args[] = {command_copy, NULL};  // Argument array for execvp
-
+    char *args[] = {command_copy, NULL};
+    
     if (execvp(command_copy, args) == -1) {
         error_handling("Error - Failed to execute the command");
     }
 }
 
-
-
-// External function to establish a pipe and execute child command
-int establish_pipe_child(const char *command, int fd_input, int fd_output) {
-    int pipe_fd[2];
-
-    if (pipe(pipe_fd) == -1) {
-        error_handling("Error - Unable to create a pipe");
-    }
-
+// External function to create a child process
+pid_t create_child() {
     pid_t pid = fork();
     if (pid == -1) {
-        error_handling("Error - Forking a child process failed");
-    } else if (pid == 0) {
-        // Child process
-        close(pipe_fd[0]); // Close the read end
-
-        execute_command(command, fd_input, pipe_fd[1]);
+        error_handling("Error - failed forking");
     }
-
-    close(pipe_fd[1]); // Close the write end in the parent
-
-    return pipe_fd[0]; // Return the read end of the pipe for the next command
+    return pid;
 }
 
-// External function to establish a pipe and execute the commands separated by piping
-int establish_pipe(int index, char **command_list) {
-    // Execute commands separated by piping
-    int fd_input = STDIN_FILENO;
+int establish_pipe(int index, char **arglist) {
+    int pipefd[2];
+    arglist[index] = NULL;
 
-    for (int i = 0; i <= index; i++) {
-        fd_input = establish_pipe_child(command_list[i], fd_input, STDOUT_FILENO);
+    if (pipe(pipefd) == -1) {
+        error_handling("Error - pipe failed");
+        return 0;
     }
 
-    return fd_input;
+    pid_t pid_first = create_child();
+    if (pid_first == 0) { // First child process
+        signal_handling(); // External function to set signal handling
+        close(pipefd[0]);
+        redirect_stdout(pipefd[1]); // External function to redirect stdout
+        execute_command(arglist[0], pipefd[1], -1);
+    }
+
+    pid_t pid_second = create_child();
+    if (pid_second == 0) { // Second child process
+        signal_handling();
+        close(pipefd[1]);
+        redirect_stdin(pipefd[0]); // External function to redirect stdin
+        execute_command(arglist[index + 1], -1, pipefd[0]);
+    }
+
+    close(pipefd[0]);
+    close(pipefd[1]);
+
+    wait_and_handle_error(pid_first);
+    wait_and_handle_error(pid_second);
+
+    return 1;
 }
 
 
