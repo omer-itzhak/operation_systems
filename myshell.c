@@ -18,11 +18,6 @@ void execute_child(int arg_count, char **cmd_args);
 int wait_and_handle_error(pid_t child_pid, const char *error_message);
 void handle_signal(int signal_type);
 
-// Enum to represent signal types
-enum SignalType {
-    SIG_TYPE_INT,
-    SIG_TYPE_CHLD
-};
 
 int prepare(void) {
     struct sigaction sa_ignore;
@@ -182,21 +177,7 @@ int wait_and_handle_error(pid_t child_pid, const char *error_message) {
     return 1; // No error
 }
 
-// Function to handle signals
-void handle_signal(int signal_type) {
-    switch (signal_type) {
-        case SIG_TYPE_INT:
-            error_handling("Error - failed to change signal SIGINT handling");
-            break;
-        case SIG_TYPE_CHLD:
-            error_handling("Error - failed to change signal SIGCHLD handling");
-            break;
-        default:
-            break;
-    }
-}
 
-// Function to establish a pipe
 int establish_pipe(int index, char **arglist) {
     // Execute the commands separated by piping
     int pipefd[2];
@@ -213,8 +194,14 @@ int establish_pipe(int index, char **arglist) {
         error_handling("Error - failed forking");
         return 0; // Error in the original process, so process_arglist should return 0
     } else if (pid_first == 0) { // First child process
-        handle_signal(SIG_TYPE_INT);
-        handle_signal(SIG_TYPE_CHLD);
+        if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
+            // Foreground child processes should terminate upon SIGINT
+            error_handling("Error - failed to change signal SIGINT handling");
+        }
+        if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+            // Restore to default SIGCHLD handling in case that execvp doesn't change signals
+            error_handling("Error - failed to change signal SIGCHLD handling");
+        }
 
         close(pipefd[0]); // This child doesn't need to read the pipe
         if (dup2(pipefd[1], STDOUT_FILENO) == -1) {
@@ -233,8 +220,14 @@ int establish_pipe(int index, char **arglist) {
         error_handling("Error - failed forking");
         return 0; // Error in the original process, so process_arglist should return 0
     } else if (pid_second == 0) { // Second child process
-        handle_signal(SIG_TYPE_INT);
-        handle_signal(SIG_TYPE_CHLD);
+        if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
+            // Foreground child processes should terminate upon SIGINT
+            error_handling("Error - failed to change signal SIGINT handling");
+        }
+        if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+            // Restore to default SIGCHLD handling in case that execvp doesn't change signals
+            error_handling("Error - failed to change signal SIGCHLD handling");
+        }
 
         close(pipefd[1]); // This child doesn't need to write the pipe
         if (dup2(pipefd[0], STDIN_FILENO) == -1) {
