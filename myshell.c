@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <signal.h>
+int pipefd[2]; // Declare pipefd globally for access in child functions
 
 
 int execute_sync(char **arglist);
@@ -139,37 +140,6 @@ int execute_sync(char **arglist) {
 }
 
 
-void execute_child(int arg_count, char **cmd_args) {
-    // Exclude the '&' argument to prevent it from being passed to execvp
-    cmd_args[arg_count - 1] = NULL;
-
-    // Restore default SIGCHLD handling in case execvp doesn't modify signals
-    if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
-        error_handling("Error: Unable to reset the SIGCHLD signal handling");
-    }
-
-    // Execute the command in the child process
-    if (execvp(cmd_args[0], cmd_args) == -1) {
-        error_handling("Error: Command execution failed");
-    }
-}
-
-int execute_async(int arg_count, char **cmd_args) {
-    // Spawn a child process to execute the command without waiting for completion before accepting another command
-    pid_t child_pid = fork();
-    if (child_pid == -1) { // Forking failed
-        error_handling("Error: Unable to create a new process");
-        return 0; // Error in the original process, causing process_arglist to return 0
-    } else if (child_pid == 0) { // Child process
-        execute_child(arg_count, cmd_args);
-        // The execute_child function contains the command execution logic and handles errors
-        // If it returns, it means an error occurred, and the child process exits
-        exit(EXIT_FAILURE); // Ensure the child process exits even if execute_child returns unexpectedly
-    }
-    // Parent process
-    return 1; // No errors occurred in the parent, allowing the shell to handle another command
-}
-
 // External function to create a child process
 pid_t create_child(void (*child_function)(void)) {
     pid_t pid = fork();
@@ -195,7 +165,6 @@ int wait_and_handle_error(pid_t child_pid, const char *error_message) {
 // External function to establish a pipe between two commands
 int establish_pipe(int index, char **arglist) {
     // Execute the commands separated by piping
-    int pipefd[2];
     arglist[index] = NULL;
 
     if (pipe(pipefd) == -1) {
