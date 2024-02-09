@@ -13,6 +13,9 @@ int establish_pipe(int index, char **arglist);
 int setup_output_redirection(int count, char **arglist);
 void error_handling(const char *message);
 void execute_child(int arg_count, char **cmd_args);
+void execute_command(const char *command, int fd_input, int fd_output);
+int establish_pipe_child(const char *command, int fd_input, int fd_output);
+
 
 
 int prepare(void) {
@@ -162,85 +165,60 @@ int execute_async(int arg_count, char **cmd_args) {
 }
 
 
-int establish_pipe(int index, char **arglist) {
-    // execute the commands that seperated by piping
-    int pipefd[2];
-    arglist[index] = NULL;
-    if (pipe(pipefd) == -1) {
-        perror("Error - pipe failed");
-        return 0;
+
+// External function to execute a command and handle errors
+void execute_command(const char *command, int fd_input, int fd_output) {
+    if (dup2(fd_input, STDIN_FILENO) == -1) {
+        error_handling("Error - Failed to redirect input");
     }
-    pid_t pid_first = fork(); // Creating the first child
-    if (pid_first == -1) { // fork failed
-        perror("Error - failed forking");
-        return 0; // error in the original process, so process_arglist should return 0
-    } else if (pid_first == 0) { // First child process
-        if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-            // Foreground child processes should terminate upon SIGINT
-            perror("Error - failed to change signal SIGINT handling");
-            exit(1);
-        }
-        if (signal(SIGCHLD, SIG_DFL) ==
-            SIG_ERR) { // restore to default SIGCHLD handling in case that execvp don't change signals
-            perror("Error - failed to change signal SIGCHLD handling");
-            exit(1);
-        }
-        close(pipefd[0]);// This child don't need to read the pipe
-        if (dup2(pipefd[1], 1) == -1) {
-            perror("Error - failed to refer the stdout of the first child to the pipe");
-            exit(1);
-        }
-        close(pipefd[1]); // after dup2 closing also this fd
-        if (execvp(arglist[0], arglist) == -1) { // executing command failed
-            perror("Error - failed executing the command");
-            exit(1);
-        }
+
+    if (dup2(fd_output, STDOUT_FILENO) == -1) {
+        error_handling("Error - Failed to redirect output");
     }
-    // parent process
-    pid_t pid_second = fork(); // Creating the second child
-    if (pid_second == -1) { // fork failed
-        perror("Error - failed forking");
-        return 0; // error in the original process, so process_arglist should return 0
-    } else if (pid_second == 0) { // Second child process
-        if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-            // Foreground child processes should terminate upon SIGINT
-            perror("Error - failed to change signal SIGINT handling");
-            exit(1);
-        }
-        if (signal(SIGCHLD, SIG_DFL) ==
-            SIG_ERR) { // restore to default SIGCHLD handling in case that execvp don't change signals
-            perror("Error - failed to change signal SIGCHLD handling");
-            exit(1);
-        }
-        close(pipefd[1]);// This child don't need to write the pipe
-        if (dup2(pipefd[0], 0) == -1) {
-            perror("Error - failed to refer the stdin of the second child from the pipe");
-            exit(1);
-        }
-        close(pipefd[0]); // after dup2 closing also this fd
-        if (execvp(arglist[index + 1], arglist + index + 1) == -1) { // executing command failed
-            perror("Error - failed executing the command");
-            exit(1);
-        }
+
+    close(fd_input);
+    close(fd_output);
+
+    if (execvp(command, NULL) == -1) {
+        error_handling("Error - Failed to execute the command");
     }
-    // again in the parent process
-    // closing two ends of the pipe
-    close(pipefd[0]);
-    close(pipefd[1]);
-    // waiting for the first child
-    if (waitpid(pid_first, NULL, 0) == -1 && errno != ECHILD && errno != EINTR) {
-        // ECHILD and EINTR in the parent shell after waitpid are not considered as errors
-        perror("Error - waitpid failed");
-        return 0; // error in the original process, so process_arglist should return 0
-    }
-    // waiting for the second child
-    if (waitpid(pid_second, NULL, 0) == -1 && errno != ECHILD && errno != EINTR) {
-        // ECHILD and EINTR in the parent shell after waitpid are not considered as errors
-        perror("Error - waitpid failed");
-        return 0; // error in the original process, so process_arglist should return 0
-    }
-    return 1; // no error occurs in the parent so for the shell to handle another command, process_arglist should return 1
 }
+
+// External function to establish a pipe and execute child command
+int establish_pipe_child(const char *command, int fd_input, int fd_output) {
+    int pipe_fd[2];
+
+    if (pipe(pipe_fd) == -1) {
+        error_handling("Error - Unable to create a pipe");
+    }
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        error_handling("Error - Forking a child process failed");
+    } else if (pid == 0) {
+        // Child process
+        close(pipe_fd[0]); // Close the read end
+
+        execute_command(command, fd_input, pipe_fd[1]);
+    }
+
+    close(pipe_fd[1]); // Close the write end in the parent
+
+    return pipe_fd[0]; // Return the read end of the pipe for the next command
+}
+
+// External function to establish a pipe and execute the commands separated by piping
+int establish_pipe(int index, char **command_list) {
+    // Execute commands separated by piping
+    int fd_input = STDIN_FILENO;
+
+    for (int i = 0; i <= index; i++) {
+        fd_input = establish_pipe_child(command_list[i], fd_input, STDOUT_FILENO);
+    }
+
+    return fd_input;
+}
+
 
 int setup_output_redirection(int count, char **arglist) {
     // execute the command so that the standard output is redirected to the output file
