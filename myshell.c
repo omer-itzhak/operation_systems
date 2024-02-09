@@ -197,7 +197,7 @@ int establish_pipe(int index, char **arglist) {
 }
 
 // External function for the first child process logic
-void first_child_function(void) {
+void first_child_function(char **arglist, int index) {
     if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
         // Foreground child processes should terminate upon SIGINT
         error_handling("Error - failed to change signal SIGINT handling");
@@ -219,7 +219,7 @@ void first_child_function(void) {
 }
 
 // External function for the second child process logic
-void second_child_function(void) {
+void second_child_function(char **arglist, int index) {
     if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
         // Foreground child processes should terminate upon SIGINT
         error_handling("Error - failed to change signal SIGINT handling");
