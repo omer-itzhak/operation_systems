@@ -273,8 +273,15 @@ int establish_pipe(int index, char **arglist) {
     close(pipefd[0]);
     close(pipefd[1]);
 
-    wait_and_handle_error(pid_first);
-    wait_and_handle_error(pid_second);
+    // waiting for the first child
+    if (!wait_and_handle_error(pid_first, "Error - waitpid failed for the first child")) {
+        return 0; // Error in the original process, so process_arglist should return 0
+    }
+    
+    // waiting for the second child
+    if (!wait_and_handle_error(pid_second, "Error - waitpid failed for the second child")) {
+        return 0; // Error in the original process, so process_arglist should return 0
+    }
 
     return 1;
 }
