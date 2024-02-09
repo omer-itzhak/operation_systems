@@ -179,10 +179,13 @@ void execute_command(const char *command, int fd_input, int fd_output) {
     close(fd_input);
     close(fd_output);
 
-    if (execvp(command, NULL) == -1) {
+    char *args[] = {command, NULL};  // Argument array for execvp
+
+    if (execvp(command, args) == -1) {
         error_handling("Error - Failed to execute the command");
     }
 }
+
 
 // External function to establish a pipe and execute child command
 int establish_pipe_child(const char *command, int fd_input, int fd_output) {
