@@ -6,60 +6,96 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-int check_if_pipe_included(int count, char **arglist);
+int execute_sync(char **arglist);
 
-int executing_commands(char **arglist);
+int execute_async(int count, char **arglist);
 
-int executing_commands_in_the_background(int count, char **arglist);
+int establish_pipe(int index, char **arglist);
 
-int single_piping(int index, char **arglist);
-
-int output_redirecting(int count, char **arglist);
+int setup_output_redirection(int count, char **arglist);
 
 int prepare(void) {
-    // After prepare() finishes the patent should not terminate upon SIGINT.
-    if (signal(SIGINT, SIG_IGN) == SIG_ERR) {
-        perror("Error - failed to change signal SIGINT handling");
+    struct sigaction sa_ignore;
+
+    // Initialize signal set to empty, ensuring no signals are blocked during handler execution
+    sigemptyset(&sa_ignore.sa_mask);
+
+    // Set flags to zero, no special behavior flags are needed
+    sa_ignore.sa_flags = 0;
+
+    // SIG_IGN is the ignore signal handler to prevent termination upon receiving SIGINT
+    sa_ignore.sa_handler = SIG_IGN;
+
+    // Apply the ignore handler to SIGINT, preventing shell exit when Ctrl+C is pressed
+    if (sigaction(SIGINT, &sa_ignore, NULL) == -1) {
+        perror("Unable to set handler for SIGINT");
         return -1;
     }
-    if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) { // dealing with zombies based on ERAN'S TRICK
-        perror("Error - failed to change signal SIGCHLD handling");
+
+    // Applying the same handler to SIGCHLD enables automatic collection of child process statuses so there are no zombies
+    if (sigaction(SIGCHLD, &sa_ignore, NULL) == -1) {
+        perror("Unable to set handler for SIGCHLD");
         return -1;
     }
+
+    // Signal handlers are configured, the shell is now protected against SIGINT and zombies.
     return 0;
 }
 
-int process_arglist(int count, char **arglist) {
-    // Each if condition causes the execution of a function that responsible for another shell functionality
-    int return_value = 0;
-    int index;
-    if (*arglist[count - 1] == '&') {
-        return_value = executing_commands_in_the_background(count, arglist);
-    } else if (count > 1 && *arglist[count - 2] == '>') {
-        return_value = output_redirecting(count, arglist);
-    } else if ((index = check_if_pipe_included(count, arglist)) != -1) {
-        return_value = single_piping(index, arglist);
-    } else {
-        return_value = executing_commands(arglist);
+
+int process_arglist(int num_args, char **cmd_args) {
+    // Operation result initialized to a default value of failure
+    int operation_result = 0;
+    
+    // Using a bool flag to determine background execution
+    int background_flag = (*cmd_args[num_args - 1] == '&') ?  1 : 0;
+    
+    // For clarity, define an enum for different operation types
+    typedef enum { BACKGROUND, REDIRECT, PIPE, REGULAR } OperationType;
+    OperationType operation_type = REGULAR; // Default operation type
+    
+    // Find out what kind of operation we're performing
+    for (int i = 0; i < num_args; i++) {
+        if (background_flag && i == num_args - 1) {
+            operation_type = BACKGROUND;
+            break;
+        }
+        if (*cmd_args[i] == '>') {
+            operation_type = REDIRECT;
+            break;
+        }
+        if (*cmd_args[i] == '|') {
+            operation_type = PIPE;
+            break;
+        }
     }
-    return return_value;
-}
+
+    // Execute operation based on the determined operation type
+    switch (operation_type) {
+        case BACKGROUND:
+            operation_result = execute_async(num_args, cmd_args);
+            break;
+        case REDIRECT:
+            operation_result = setup_output_redirection(num_args, cmd_args);
+            break;
+        case PIPE:
+            operation_result = establish_pipe(num_args, cmd_args);
+            break;
+        case REGULAR:
+            operation_result = execute_sync(cmd_args);
+            break;
+    }
+
+    return operation_result;
+} 
+
 
 int finalize(void) {
     return 0;
 }
 
-int check_if_pipe_included(int count, char **arglist) {
-    // check if '|' is one of the words in the arglist and if so return its index
-    for (int i = 0; i < count; i++) {
-        if (*arglist[i] == '|') {
-            return i;
-        }
-    }
-    return -1;
-}
 
-int executing_commands(char **arglist) {
+int execute_sync(char **arglist) {
     // execute the command and wait until it completes before accepting another command
     pid_t pid = fork();
     if (pid == -1) { // fork failed
@@ -90,8 +126,8 @@ int executing_commands(char **arglist) {
     return 1; // no error occurs in the parent so for the shell to handle another command, process_arglist should return 1
 }
 
-int executing_commands_in_the_background(int count, char **arglist) {
-    // execute the command but does not wait until it completes before accepting another command
+int execute_async(int count, char **arglist) {
+    // execute the command but do not wait until it completes before accepting another command
     pid_t pid = fork();
     if (pid == -1) { // fork failed
         perror("Error - failed forking");
@@ -112,7 +148,7 @@ int executing_commands_in_the_background(int count, char **arglist) {
     return 1; // for the shell to handle another command, process_arglist should return 1
 }
 
-int single_piping(int index, char **arglist) {
+int establish_pipe(int index, char **arglist) {
     // execute the commands that seperated by piping
     int pipefd[2];
     arglist[index] = NULL;
@@ -192,7 +228,7 @@ int single_piping(int index, char **arglist) {
     return 1; // no error occurs in the parent so for the shell to handle another command, process_arglist should return 1
 }
 
-int output_redirecting(int count, char **arglist) {
+int setup_output_redirection(int count, char **arglist) {
     // execute the command so that the standard output is redirected to the output file
     arglist[count - 2] = NULL;
     pid_t pid = fork();
