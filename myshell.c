@@ -175,10 +175,10 @@ int establish_pipe(int index, char **arglist) {
     }
 
     // Creating the first child
-    pid_t pid_first = create_child(first_child_function, index, arglist);
+    pid_t pid_first = create_child(first_child_function, arglist, index);
 
     // Creating the second child
-    pid_t pid_second = create_child(second_child_function, index + 1, arglist);
+    pid_t pid_second = create_child(second_child_function, arglist, index + 1);
 
     // Parent process
     // Closing two ends of the pipe
