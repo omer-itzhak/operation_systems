@@ -192,6 +192,41 @@ int wait_and_handle_error(pid_t child_pid, const char *error_message) {
     return 1; // No error
 }
 
+// External function to establish a pipe between two commands
+int establish_pipe(int index, char **arglist) {
+    // Execute the commands separated by piping
+    int pipefd[2];
+    arglist[index] = NULL;
+
+    if (pipe(pipefd) == -1) {
+        error_handling("Error - pipe failed");
+        return 0;
+    }
+
+    // Creating the first child
+    pid_t pid_first = create_child(first_child_function);
+    
+    // Creating the second child
+    pid_t pid_second = create_child(second_child_function);
+
+    // Parent process
+    // Closing two ends of the pipe
+    close(pipefd[0]);
+    close(pipefd[1]);
+
+    // Waiting for the first child
+    if (!wait_and_handle_error(pid_first, "Error - waitpid failed for the first child")) {
+        return 0; // Error in the original process, so process_arglist should return 0
+    }
+
+    // Waiting for the second child
+    if (!wait_and_handle_error(pid_second, "Error - waitpid failed for the second child")) {
+        return 0; // Error in the original process, so process_arglist should return 0
+    }
+
+    return 1; // No error occurs in the parent, so for the shell to handle another command, process_arglist should return 1
+}
+
 // External function for the first child process logic
 void first_child_function(void) {
     if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
@@ -234,41 +269,6 @@ void second_child_function(void) {
     if (execvp(arglist[index + 1], arglist + index + 1) == -1) { // Executing command failed
         error_handling("Error - failed executing the command");
     }
-}
-
-// External function to establish a pipe between two commands
-int establish_pipe(int index, char **arglist) {
-    // Execute the commands separated by piping
-    int pipefd[2];
-    arglist[index] = NULL;
-
-    if (pipe(pipefd) == -1) {
-        error_handling("Error - pipe failed");
-        return 0;
-    }
-
-    // Creating the first child
-    pid_t pid_first = create_child(first_child_function);
-    
-    // Creating the second child
-    pid_t pid_second = create_child(second_child_function);
-
-    // Parent process
-    // Closing two ends of the pipe
-    close(pipefd[0]);
-    close(pipefd[1]);
-
-    // Waiting for the first child
-    if (!wait_and_handle_error(pid_first, "Error - waitpid failed for the first child")) {
-        return 0; // Error in the original process, so process_arglist should return 0
-    }
-
-    // Waiting for the second child
-    if (!wait_and_handle_error(pid_second, "Error - waitpid failed for the second child")) {
-        return 0; // Error in the original process, so process_arglist should return 0
-    }
-
-    return 1; // No error occurs in the parent, so for the shell to handle another command, process_arglist should return 1
 }
 
 
