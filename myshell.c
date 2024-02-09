@@ -81,7 +81,7 @@ int process_arglist(int num_args, char **cmd_args) {
             return execute_async(num_args, cmd_args);
         } else {
             // Execute synchronously
-            return execute_sync(num_args, cmd_args);
+            return execute_sync(cmd_args);
         }
     }
 }
