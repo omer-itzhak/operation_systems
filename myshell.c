@@ -99,7 +99,10 @@ int execute_sync(char **command_args) {
     // Fork a new process to execute the command
     pid_t child_pid = fork();
 
-    if (child_pid == 0) { // Child process
+    if (child_pid == -1) { // Failed to create a new process
+        perror("Error - unable to create a new child process");
+        return 0; // Indicate an error in the original process, prompting process_arglist to return 0
+    } else if (child_pid == 0) { // Child process
         // Set up signal handling for foreground child processes to handle Ctrl+C
         if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
             perror("Error - unable to handle Ctrl+C in the child process");
@@ -118,9 +121,6 @@ int execute_sync(char **command_args) {
             perror("Error - failed to execute the specified command");
             exit(1);
         }
-    } else if (child_pid == -1) { // Failed to create a new process
-        perror("Error - unable to create a new child process");
-        return 0; // Indicate an error in the original process, prompting process_arglist to return 0
     }
 
     // Parent process
@@ -134,6 +134,7 @@ int execute_sync(char **command_args) {
 
     return 1; // Successful execution in the parent process, allowing the shell to handle another command
 }
+
 
 
 int execute_async(int count, char **arglist) {
