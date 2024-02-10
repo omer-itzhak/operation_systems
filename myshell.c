@@ -156,7 +156,7 @@ void execute_child(int num_args, char **cmd_args) {
 
     // Execute the command in the child process
     if (execvp(cmd_args[0], cmd_args) == -1) {
-        error_handling("Error: Command execution failed");
+        error_handling("Error - execution of the command failed");
     }
 }
 
@@ -185,9 +185,9 @@ int execute_async(int num_args, char **cmd_args) {
 int wait_and_handle_error(pid_t child_pid, const char *error_message) {
     int status;
     if (waitpid(child_pid, &status, 0) == -1 && errno != ECHILD && errno != EINTR) {
-        // Ignore ECHILD and EINTR in the parent shell after waitpid, as they are not treated as errors
+        // Ignore ECHILD and EINTR in the parent shell after waitpid, as they are not considered errors
         perror(error_message);
-        return 0; // Error occurred
+        return 0; // An error occurred
     }
 
     return 1; // No error
@@ -196,17 +196,17 @@ int wait_and_handle_error(pid_t child_pid, const char *error_message) {
 // Helper function to set signal handling for child processes
 void set_child_signal_handling() {
     if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-        error_handling("Error - failed to change signal SIGINT handling");
+        error_handling("Error - failed to update SIGINT signal handling for the child process");
     }
     if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
-        error_handling("Error - failed to change signal SIGCHLD handling");
+        error_handling("Error - failed to update SIGCHLD signal handling for the child process");
     }
 }
 
 // Helper function to redirect stdout to a pipe
 void redirect_stdout_to_pipe(int pipefd_write) {
     if (dup2(pipefd_write, STDOUT_FILENO) == -1) {
-        error_handling("Error - failed to refer stdout to the pipe");
+        error_handling("Error - failed to redirect stdout to the pipe");
     }
     close(pipefd_write);  // Close the pipe write end after redirection
 }
@@ -214,7 +214,7 @@ void redirect_stdout_to_pipe(int pipefd_write) {
 // Helper function to redirect stdin from a pipe
 void redirect_stdin_from_pipe(int pipefd_read) {
     if (dup2(pipefd_read, STDIN_FILENO) == -1) {
-        error_handling("Error - failed to refer stdin from the pipe");
+        error_handling("Error - failed to redirect stdin from the pipe");
     }
     close(pipefd_read);  // Close the pipe read end after redirection
 }
@@ -226,7 +226,6 @@ void close_pipe_ends(int pipefd[2]) {
 }
 
 
-
 int establish_pipe(int index, char **cmd_args) {
     // Execute commands with piping
 
@@ -235,7 +234,7 @@ int establish_pipe(int index, char **cmd_args) {
     cmd_args[index] = NULL;
 
     if (pipe(pipefd) == -1) {
-        error_handling("Error - pipe failed");
+        error_handling("Error - failed piping");
         return 0;
     }
 
@@ -256,7 +255,7 @@ int establish_pipe(int index, char **cmd_args) {
 
         // Execute the first command
         if (execvp(cmd_args[0], cmd_args) == -1) {
-            error_handling("Error - failed executing the command");
+            error_handling("Error - failed execution of the first command");
         }
     }
 
@@ -277,7 +276,7 @@ int establish_pipe(int index, char **cmd_args) {
 
         // Execute the second command
         if (execvp(cmd_args[index + 1], cmd_args + index + 1) == -1) {
-            error_handling("Error - failed executing the command");
+            error_handling("Error - execution of the command failed");
         }
     }
 
@@ -300,10 +299,10 @@ int establish_pipe(int index, char **cmd_args) {
 // Helper function to set signal handling for a child process
 void set_signal_handling_child() {
     if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-        error_handling("Error - failed to change signal SIGINT handling");
+        error_handling("Error - unable to update SIGINT signal handling for the child process");
     }
     if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
-        error_handling("Error - failed to change signal SIGCHLD handling");
+        error_handling("Error - unable to update SIGCHLD signal handling for the child process");
     }
 }
 
@@ -311,14 +310,15 @@ void set_signal_handling_child() {
 int open_and_redirect_file(char *filename) {
     int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0777);
     if (fd == -1) {
-        error_handling("Error - Failed opening the file");
+        error_handling("Error - unable to open or create the specified file for redirection");
     }
     if (dup2(fd, 1) == -1) {
-        error_handling("Error - failed to refer stdout to the file");
+        error_handling("Error - failed to redirect stdout to the specified file");
     }
     close(fd);
     return 1;
 }
+
 
 // Function to set up output redirection
 int setup_output_redirection(int num_args, char **cmd_args) {
@@ -345,7 +345,7 @@ int setup_output_redirection(int num_args, char **cmd_args) {
 
         // Execute the command in the child process.
         if (execvp(cmd_args[0], cmd_args) == -1) {
-            error_handling("Error - failed executing the command");
+            error_handling("Error - execution of the command failed");
         }
     }
 
