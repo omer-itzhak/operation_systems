@@ -17,6 +17,9 @@ void error_handling(const char *message);
 void execute_child(int arg_count, char **cmd_args);
 int wait_and_handle_error(pid_t child_pid, const char *error_message);
 void handle_signal(int signal_type);
+void set_signal_handling_child();
+int open_and_redirect_file(char *filename);
+
 
 
 int prepare(void) {
@@ -258,6 +261,29 @@ int establish_pipe(int index, char **arglist) {
     return 1; // No error occurs in the parent, so for the shell to handle another command, process_arglist should return 1
 }
 
+// Helper function to set signal handling for a child process
+void set_signal_handling_child() {
+    if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
+        error_handling("Error - failed to change signal SIGINT handling");
+    }
+    if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+        error_handling("Error - failed to change signal SIGCHLD handling");
+    }
+}
+
+// Helper function to handle the file opening and redirection logic
+int open_and_redirect_file(char *filename) {
+    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0777);
+    if (fd == -1) {
+        error_handling("Error - Failed opening the file");
+    }
+    if (dup2(fd, 1) == -1) {
+        error_handling("Error - failed to refer stdout to the file");
+    }
+    close(fd);
+    return 1;
+}
+
 // Function to set up output redirection
 int setup_output_redirection(int count, char **arglist) {
     // Check if the command includes a single redirection symbol (">").
@@ -274,27 +300,12 @@ int setup_output_redirection(int count, char **arglist) {
         return 0; // Return 0 to indicate an error in the original process
     } else if (pid == 0) { // Child process
         // Set signal handling for the child process
-        if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-            error_handling("Error - failed to change signal SIGINT handling");
-        }
-        if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
-            error_handling("Error - failed to change signal SIGCHLD handling");
-        }
+        set_signal_handling_child();
 
-        // Open the specified file for writing or create it if it doesn't exist.
-        // Set file permissions in the process.
-        int fd = open(arglist[count - 1], O_WRONLY | O_CREAT | O_TRUNC, 0777);
-        if (fd == -1) {
-            error_handling("Error - Failed opening the file");
+        // Open and redirect the specified file
+        if (!open_and_redirect_file(arglist[count - 1])) {
+            exit(1); // Terminate child process on error
         }
-
-        // Redirect stdout of the child process to the opened file using dup2.
-        if (dup2(fd, 1) == -1) {
-            error_handling("Error - failed to refer stdout to the file");
-        }
-
-        // Close the file descriptor.
-        close(fd);
 
         // Execute the command in the child process.
         if (execvp(arglist[0], arglist) == -1) {
@@ -310,4 +321,3 @@ int setup_output_redirection(int count, char **arglist) {
     // Return 1 to indicate successful execution in the parent process
     return 1;
 }
-
