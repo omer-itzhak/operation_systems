@@ -108,17 +108,19 @@ void error_handling(const char *message) {
 int execute_sync(char **cmd_args) {
     // Spawn a child process to execute the command, then wait for its completion before accepting another command
     pid_t child_pid = fork();
-    if (child_pid == -1) { // Forking failed
+    if (child_pid == -1) { // Forking was failed
         error_handling("Failed to create a child process");
         return 0; // An error occurred in the original process, causing process_arglist to return 0
-    } else if (child_pid == 0) { // Child process
+    
+     // Child process handling
+    } else if (child_pid == 0) { 
         // Set up signal handling for the child process
         if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
             // Handle SIGINT in foreground child processes
             error_handling("Failed to adjust SIGINT handling in the child process");
         }
         if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
-            // Restore default SIGCHLD handling in case execvp doesn't modify signals
+            // Revert to the default SIGCHLD handling if execvp doesn't alter signal configurations
             error_handling("Failed to adjust SIGCHLD handling in the child process");
         }
         // Execute the command in the child process
@@ -126,10 +128,12 @@ int execute_sync(char **cmd_args) {
             error_handling("Failed to execute the command in the child process");
         }
     }
-    // Parent process
+
+    
+    // Parent process handling
     // Wait for the child process to complete
     if (waitpid(child_pid, NULL, 0) == -1 && errno != ECHILD && errno != EINTR) {
-        // ECHILD and EINTR in the parent shell after waitpid are not considered errors
+        // Ignore ECHILD and EINTR in the parent shell after waitpid, as they are not treated as errors
         error_handling("Failed to wait for the child process");
         return 0; // An error occurred in the original process, causing process_arglist to return 0
     }
@@ -152,33 +156,39 @@ void execute_child(int num_args, char **cmd_args) {
     }
 }
 
+// Execute a command asynchronously, spawning a child process
 int execute_async(int num_args, char **cmd_args) {
-    // Spawn a child process to execute the command without waiting for completion before accepting another command
+    // Fork to create a child process that executes the command without waiting for completion
     pid_t child_pid = fork();
     if (child_pid == -1) { // Forking failed
         error_handling("Error: Unable to create a new process");
         return 0; // Error in the original process, causing process_arglist to return 0
-    } else if (child_pid == 0) { // Child process
+     
+     // Child process handling
+    }else if (child_pid == 0) { 
+        // The execute_child function includes child execution logic and handles errors
         execute_child(num_args, cmd_args);
-        // The execute_child function contains the command execution logic and handles errors
-        // If it returns, it means an error occurred, and the child process exits
+        // If it returns, an error occurred, and the child process exits
         exit(EXIT_FAILURE); // Ensure the child process exits even if execute_child returns unexpectedly
     }
-    // Parent process
-    return 1; // No errors occurred in the parent, allowing the shell to handle another command
+    
+    // Parent process handling
+    // No errors occurred in the parent, allowing the shell to handle another command
+    return 1; 
 }
 
 // External function to wait for a child process and handle errors
 int wait_and_handle_error(pid_t child_pid, const char *error_message) {
     int status;
     if (waitpid(child_pid, &status, 0) == -1 && errno != ECHILD && errno != EINTR) {
-        // ECHILD and EINTR in the parent shell after waitpid are not considered as errors
+        // Ignore ECHILD and EINTR in the parent shell after waitpid, as they are not treated as errors
         perror(error_message);
         return 0; // Error occurred
     }
 
     return 1; // No error
 }
+
 
 
 int establish_pipe(int index, char **cmd_args) {
