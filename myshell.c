@@ -144,6 +144,27 @@ int execute_sync(char **cmd_args) {
 }
 
 
+int execute_async(int num_args, char **cmd_args) {
+    // Spawn a child process to execute the command without waiting for completion
+    pid_t child_pid = fork();
+    
+    if (child_pid == -1) { // Forking failed
+        error_handling("Error: Unable to create a new process");
+        return 0; // Error in the original process, causing process_arglist to return 0
+    }
+
+    if (child_pid == 0) { // Child process
+        // The execute_child function contains the command execution logic and handles errors
+        execute_child(num_args, cmd_args);
+        
+        // If it returns, an error occurred, and the child process exits
+        exit(EXIT_FAILURE); // Ensure the child process exits even if execute_child returns unexpectedly
+    }
+
+    // Parent process
+    return 1; // No errors occurred in the parent, allowing the shell to handle another command
+}
+
 void execute_child(int num_args, char **cmd_args) {
     // Exclude the '&' argument to prevent it from being passed to execvp
     cmd_args[num_args - 1] = NULL;
@@ -155,30 +176,11 @@ void execute_child(int num_args, char **cmd_args) {
 
     // Execute the command in the child process
     if (execvp(cmd_args[0], cmd_args) == -1) {
-        error_handling("Error - execution of the command failed");
+        perror("Error - execution of the command failed");
+        exit(EXIT_FAILURE);
     }
 }
 
-// Execute a command asynchronously, spawning a child process
-int execute_async(int num_args, char **cmd_args) {
-    // Fork to create a child process that executes the command without waiting for completion
-    pid_t child_pid = fork();
-    if (child_pid == -1) { // Forking failed
-        error_handling("Error: Unable to create a new process");
-        return 0; // Error in the original process, causing process_arglist to return 0
-     
-     // Child process handling
-    }else if (child_pid == 0) { 
-        // The execute_child function includes child execution logic and handles errors
-        execute_child(num_args, cmd_args);
-        // If it returns, an error occurred, and the child process exits
-        exit(EXIT_FAILURE); // Ensure the child process exits even if execute_child returns unexpectedly
-    }
-    
-    // Parent process handling
-    // No errors occurred in the parent, allowing the shell to handle another command
-    return 1; 
-}
 
 // External function to wait for a child process and handle errors
 int wait_and_handle_error(pid_t child_pid, const char *error_message) {
