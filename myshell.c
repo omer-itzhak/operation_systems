@@ -9,12 +9,12 @@
 #include <signal.h>
 
 
-int execute_sync(char **arglist);
-int execute_async(int count, char **arglist);
-int establish_pipe(int index, char **arglist);
-int setup_output_redirection(int count, char **arglist);
+int execute_sync(char **cmd_args);
+int execute_async(int num_args, char **cmd_args);
+int establish_pipe(int index, char **cmd_args);
+int setup_output_redirection(int num_args, char **cmd_args);
 void error_handling(const char *message);
-void execute_child(int arg_count, char **cmd_args);
+void execute_child(int num_args, char **cmd_args);
 int wait_and_handle_error(pid_t child_pid, const char *error_message);
 void handle_signal(int signal_type);
 void set_signal_handling_child();
@@ -58,7 +58,7 @@ int process_arglist(int num_args, char **cmd_args) {
     if (num_args > 0 && strcmp(cmd_args[num_args - 1], "&") == 0) {
         background_flag = 1;
         cmd_args[num_args - 1] = NULL; // Remove '&' from the argument list
-        num_args--; // Decrement the argument count
+        num_args--; // Decrement the argument num_args
     }
 
     // Check for piping and redirection
@@ -105,7 +105,7 @@ void error_handling(const char *message) {
     exit(EXIT_FAILURE);
 }
 
-int execute_sync(char **arglist) {
+int execute_sync(char **cmd_args) {
     // Spawn a child process to execute the command, then wait for its completion before accepting another command
     pid_t child_pid = fork();
     if (child_pid == -1) { // Forking failed
@@ -122,7 +122,7 @@ int execute_sync(char **arglist) {
             error_handling("Failed to adjust SIGCHLD handling in the child process");
         }
         // Execute the command in the child process
-        if (execvp(arglist[0], arglist) == -1) {
+        if (execvp(cmd_args[0], cmd_args) == -1) {
             error_handling("Failed to execute the command in the child process");
         }
     }
@@ -137,9 +137,9 @@ int execute_sync(char **arglist) {
 }
 
 
-void execute_child(int arg_count, char **cmd_args) {
+void execute_child(int num_args, char **cmd_args) {
     // Exclude the '&' argument to prevent it from being passed to execvp
-    cmd_args[arg_count - 1] = NULL;
+    cmd_args[num_args - 1] = NULL;
 
     // Restore default SIGCHLD handling in case execvp doesn't modify signals
     if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
@@ -152,14 +152,14 @@ void execute_child(int arg_count, char **cmd_args) {
     }
 }
 
-int execute_async(int arg_count, char **cmd_args) {
+int execute_async(int num_args, char **cmd_args) {
     // Spawn a child process to execute the command without waiting for completion before accepting another command
     pid_t child_pid = fork();
     if (child_pid == -1) { // Forking failed
         error_handling("Error: Unable to create a new process");
         return 0; // Error in the original process, causing process_arglist to return 0
     } else if (child_pid == 0) { // Child process
-        execute_child(arg_count, cmd_args);
+        execute_child(num_args, cmd_args);
         // The execute_child function contains the command execution logic and handles errors
         // If it returns, it means an error occurred, and the child process exits
         exit(EXIT_FAILURE); // Ensure the child process exits even if execute_child returns unexpectedly
@@ -181,10 +181,10 @@ int wait_and_handle_error(pid_t child_pid, const char *error_message) {
 }
 
 
-int establish_pipe(int index, char **arglist) {
+int establish_pipe(int index, char **cmd_args) {
     // Execute the commands separated by piping
     int pipefd[2];
-    arglist[index] = NULL;
+    cmd_args[index] = NULL;
 
     if (pipe(pipefd) == -1) {
         error_handling("Error - pipe failed");
@@ -212,7 +212,7 @@ int establish_pipe(int index, char **arglist) {
         }
 
         close(pipefd[1]); // After dup2 closing also this fd
-        if (execvp(arglist[0], arglist) == -1) { // Executing command failed
+        if (execvp(cmd_args[0], cmd_args) == -1) { // Executing command failed
             error_handling("Error - failed executing the command");
         }
     }
@@ -238,7 +238,7 @@ int establish_pipe(int index, char **arglist) {
         }
 
         close(pipefd[0]); // After dup2 closing also this fd
-        if (execvp(arglist[index + 1], arglist + index + 1) == -1) { // Executing command failed
+        if (execvp(cmd_args[index + 1], cmd_args + index + 1) == -1) { // Executing command failed
             error_handling("Error - failed executing the command");
         }
     }
@@ -285,13 +285,13 @@ int open_and_redirect_file(char *filename) {
 }
 
 // Function to set up output redirection
-int setup_output_redirection(int count, char **arglist) {
+int setup_output_redirection(int num_args, char **cmd_args) {
     // Check if the command includes a single redirection symbol (">").
     // If found, open the specified file that comes after the symbol
     // and execute the child process, redirecting its standard output (stdout) to the file.
 
     // Modify arglist to truncate it at the redirection symbol.
-    arglist[count - 2] = NULL;
+    cmd_args[num_args - 2] = NULL;
 
     // Fork to create a child process
     pid_t pid = fork();
@@ -303,12 +303,12 @@ int setup_output_redirection(int count, char **arglist) {
         set_signal_handling_child();
 
         // Open and redirect the specified file
-        if (!open_and_redirect_file(arglist[count - 1])) {
+        if (!open_and_redirect_file(cmd_args[num_args - 1])) {
             exit(1); // Terminate child process on error
         }
 
         // Execute the command in the child process.
-        if (execvp(arglist[0], arglist) == -1) {
+        if (execvp(cmd_args[0], cmd_args) == -1) {
             error_handling("Error - failed executing the command");
         }
     }
