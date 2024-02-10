@@ -16,7 +16,6 @@ int setup_output_redirection(int num_args, char **cmd_args);
 void error_handling(const char *message);
 void execute_child(int num_args, char **cmd_args);
 int wait_and_handle_error(pid_t child_pid, const char *error_message);
-void handle_signal(int signal_type);
 void set_signal_handling_child();
 int open_and_redirect_file(char *filename);
 void set_child_signal_handling();
