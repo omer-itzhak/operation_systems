@@ -18,10 +18,6 @@ void execute_child(int num_args, char **cmd_args);
 int wait_and_handle_error(pid_t child_pid, const char *error_message);
 void set_signal_handling_child();
 int open_and_redirect_file(char *filename);
-void set_child_signal_handling();
-void redirect_stdout_to_pipe(int pipefd_write);
-void redirect_stdin_from_pipe(int pipefd_read);
-void close_pipe_ends(int pipefd[2]);
 
 
 
@@ -84,7 +80,7 @@ int process_arglist(int num_args, char **cmd_args) {
         return establish_pipe(pipe_index, cmd_args);
     } else if (redirect_index != -1) {
         // Handle output redirection
-        return setup_output_redirection(redirect_index, cmd_args);
+        return setup_output_redirection(num_args, cmd_args);
     } else {
         // No piping or redirection, execute normally
         if (background_flag) {
@@ -144,30 +140,9 @@ int execute_sync(char **cmd_args) {
 }
 
 
-int execute_async(int num_args, char **cmd_args) {
-    // Spawn a child process to execute the command without waiting for completion
-    pid_t child_pid = fork();
-    
-    if (child_pid == -1) { // Forking failed
-        error_handling("Error: Unable to create a new process");
-        return 0; // Error in the original process, causing process_arglist to return 0
-    }
-
-    if (child_pid == 0) { // Child process
-        // The execute_child function contains the command execution logic and handles errors
-        execute_child(num_args, cmd_args);
-        
-        // If it returns, an error occurred, and the child process exits
-        exit(EXIT_FAILURE); // Ensure the child process exits even if execute_child returns unexpectedly
-    }
-
-    // Parent process
-    return 1; // No errors occurred in the parent, allowing the shell to handle another command
-}
-
 void execute_child(int num_args, char **cmd_args) {
     // Exclude the '&' argument to prevent it from being passed to execvp
-    // cmd_args[num_args - 1] = NULL;
+    cmd_args[num_args - 1] = NULL;
 
     // Restore default SIGCHLD handling in case execvp doesn't modify signals
     if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
@@ -176,134 +151,132 @@ void execute_child(int num_args, char **cmd_args) {
 
     // Execute the command in the child process
     if (execvp(cmd_args[0], cmd_args) == -1) {
-        perror("Error - execution of the command failed");
-        exit(EXIT_FAILURE);
+        error_handling("Error: Command execution failed");
     }
 }
 
+// Execute a command asynchronously, spawning a child process
+int execute_async(int num_args, char **cmd_args) {
+    // Fork to create a child process that executes the command without waiting for completion
+    pid_t child_pid = fork();
+    if (child_pid == -1) { // Forking failed
+        error_handling("Error: Unable to create a new process");
+        return 0; // Error in the original process, causing process_arglist to return 0
+     
+     // Child process handling
+    }else if (child_pid == 0) { 
+        // The execute_child function includes child execution logic and handles errors
+        execute_child(num_args, cmd_args);
+        // If it returns, an error occurred, and the child process exits
+        exit(EXIT_FAILURE); // Ensure the child process exits even if execute_child returns unexpectedly
+    }
+    
+    // Parent process handling
+    // No errors occurred in the parent, allowing the shell to handle another command
+    return 1; 
+}
 
 // External function to wait for a child process and handle errors
 int wait_and_handle_error(pid_t child_pid, const char *error_message) {
     int status;
     if (waitpid(child_pid, &status, 0) == -1 && errno != ECHILD && errno != EINTR) {
-        // Ignore ECHILD and EINTR in the parent shell after waitpid, as they are not considered errors
+        // Ignore ECHILD and EINTR in the parent shell after waitpid, as they are not treated as errors
         perror(error_message);
-        return 0; // An error occurred
+        return 0; // Error occurred
     }
 
     return 1; // No error
 }
 
-// Helper function to set signal handling for child processes
-void set_child_signal_handling() {
-    if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-        error_handling("Error - failed to update SIGINT signal handling for the child process");
-    }
-    if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
-        error_handling("Error - failed to update SIGCHLD signal handling for the child process");
-    }
-}
-
-// Helper function to redirect stdout to a pipe
-void redirect_stdout_to_pipe(int pipefd_write) {
-    if (dup2(pipefd_write, STDOUT_FILENO) == -1) {
-        error_handling("Error - failed to redirect stdout to the pipe");
-    }
-    close(pipefd_write);  // Close the pipe write end after redirection
-}
-
-// Helper function to redirect stdin from a pipe
-void redirect_stdin_from_pipe(int pipefd_read) {
-    if (dup2(pipefd_read, STDIN_FILENO) == -1) {
-        error_handling("Error - failed to redirect stdin from the pipe");
-    }
-    close(pipefd_read);  // Close the pipe read end after redirection
-}
-
-// Helper function to close both ends of a pipe
-void close_pipe_ends(int pipefd[2]) {
-    close(pipefd[0]);  // Close read end
-    close(pipefd[1]);  // Close write end
-}
 
 
 int establish_pipe(int index, char **cmd_args) {
-    // Execute commands with piping
-
-    // Set up pipe
+    // Execute the commands separated by piping
     int pipefd[2];
     cmd_args[index] = NULL;
 
     if (pipe(pipefd) == -1) {
-        error_handling("Error - failed piping");
+        error_handling("Error - pipe failed");
         return 0;
     }
 
-    // Create the first child
+    // Creating the first child
     pid_t pid_first = fork();
-    if (pid_first == -1) {
-        // Fork failed
+    if (pid_first == -1) { // Fork failed
         error_handling("Error - failed forking");
-        return 0;
-    }
+        return 0; // Error in the original process, so process_arglist should return 0
+    } else if (pid_first == 0) { // First child process
+        if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
+            // Foreground child processes should terminate upon SIGINT
+            error_handling("Error - failed to change signal SIGINT handling");
+        }
+        if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+            // Restore to default SIGCHLD handling in case that execvp doesn't change signals
+            error_handling("Error - failed to change signal SIGCHLD handling");
+        }
 
-    if (pid_first == 0) {
-        // First child process
-        set_child_signal_handling();  // Set signal handling for the child
+        close(pipefd[0]); // This child doesn't need to read the pipe
+        if (dup2(pipefd[1], STDOUT_FILENO) == -1) {
+            error_handling("Error - failed to refer the stdout of the first child to the pipe");
+        }
 
-        close(pipefd[0]);  // Close unused read end of the pipe
-        redirect_stdout_to_pipe(pipefd[1]);  // Redirect stdout to the pipe
-
-        // Execute the first command
-        if (execvp(cmd_args[0], cmd_args) == -1) {
-            error_handling("Error - failed execution of the first command");
+        close(pipefd[1]); // After dup2 closing also this fd
+        if (execvp(cmd_args[0], cmd_args) == -1) { // Executing command failed
+            error_handling("Error - failed executing the command");
         }
     }
 
-    // Create the second child
+    // Creating the second child
     pid_t pid_second = fork();
-    if (pid_second == -1) {
-        // Fork failed
+    if (pid_second == -1) { // Fork failed
         error_handling("Error - failed forking");
-        return 0;
-    }
+        return 0; // Error in the original process, so process_arglist should return 0
+    } else if (pid_second == 0) { // Second child process
+        if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
+            // Foreground child processes should terminate upon SIGINT
+            error_handling("Error - failed to change signal SIGINT handling");
+        }
+        if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
+            // Restore to default SIGCHLD handling in case that execvp doesn't change signals
+            error_handling("Error - failed to change signal SIGCHLD handling");
+        }
 
-    if (pid_second == 0) {
-        // Second child process
-        set_child_signal_handling();  // Set signal handling for the child
+        close(pipefd[1]); // This child doesn't need to write the pipe
+        if (dup2(pipefd[0], STDIN_FILENO) == -1) {
+            error_handling("Error - failed to refer the stdin of the second child from the pipe");
+        }
 
-        close(pipefd[1]);  // Close unused write end of the pipe
-        redirect_stdin_from_pipe(pipefd[0]);  // Redirect stdin from the pipe
-
-        // Execute the second command
-        if (execvp(cmd_args[index + 1], cmd_args + index + 1) == -1) {
-            error_handling("Error - execution of the command failed");
+        close(pipefd[0]); // After dup2 closing also this fd
+        if (execvp(cmd_args[index + 1], cmd_args + index + 1) == -1) { // Executing command failed
+            error_handling("Error - failed executing the command");
         }
     }
 
     // Parent process
-    close_pipe_ends(pipefd);  // Close both ends of the pipe
+    // Closing two ends of the pipe
+    close(pipefd[0]);
+    close(pipefd[1]);
 
-    // Wait for the first child
+    // Waiting for the first child
     if (!wait_and_handle_error(pid_first, "Error - waitpid failed for the first child")) {
-        return 0;
+        return 0; // Error in the original process, so process_arglist should return 0
     }
 
-    // Wait for the second child
+    // Waiting for the second child
     if (!wait_and_handle_error(pid_second, "Error - waitpid failed for the second child")) {
-        return 0;
+        return 0; // Error in the original process, so process_arglist should return 0
     }
 
-    return 1; // No error in the parent, allowing the shell to handle another command
+    return 1; // No error occurs in the parent, so for the shell to handle another command, process_arglist should return 1
 }
 
 // Helper function to set signal handling for a child process
 void set_signal_handling_child() {
     if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
-        error_handling("Error - unable to update SIGINT signal handling for the child process");
+        error_handling("Error - failed to change signal SIGINT handling");
     }
     if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
-        error_handling("Error - unable to update SIGCHLD signal handling for the child process");
+        error_handling("Error - failed to change signal SIGCHLD handling");
     }
 }
 
@@ -311,15 +284,14 @@ void set_signal_handling_child() {
 int open_and_redirect_file(char *filename) {
     int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0777);
     if (fd == -1) {
-        error_handling("Error - unable to open or create the specified file for redirection");
+        error_handling("Error - Failed opening the file");
     }
     if (dup2(fd, 1) == -1) {
-        error_handling("Error - failed to redirect stdout to the specified file");
+        error_handling("Error - failed to refer stdout to the file");
     }
     close(fd);
     return 1;
 }
-
 
 // Function to set up output redirection
 int setup_output_redirection(int num_args, char **cmd_args) {
@@ -346,7 +318,7 @@ int setup_output_redirection(int num_args, char **cmd_args) {
 
         // Execute the command in the child process.
         if (execvp(cmd_args[0], cmd_args) == -1) {
-            error_handling("Error - execution of the command failed");
+            error_handling("Error - failed executing the command");
         }
     }
 
