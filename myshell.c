@@ -344,4 +344,5 @@ int setup_output_redirection(int num_args, char **cmd_args) {
         if (execvp(cmd_args[0], cmd_args) == -1) {
             error_handling("Error - execution of the command failed");
         }
+        return 1
     }
