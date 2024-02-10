@@ -167,7 +167,7 @@ int execute_async(int num_args, char **cmd_args) {
 
 void execute_child(int num_args, char **cmd_args) {
     // Exclude the '&' argument to prevent it from being passed to execvp
-    cmd_args[num_args - 1] = NULL;
+    // cmd_args[num_args - 1] = NULL;
 
     // Restore default SIGCHLD handling in case execvp doesn't modify signals
     if (signal(SIGCHLD, SIG_DFL) == SIG_ERR) {
